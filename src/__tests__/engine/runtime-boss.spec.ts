@@ -125,11 +125,10 @@ describe("handleBossMessage: matched → ответ клиенту + транз�
     await seedTickets(freshFile(ticket));
 
     const { rt, tg } = await buildRuntime();
-    const handled = await (rt as any).handleBossMessage(
+    await (rt as any).handleBossMessage(
       makeIncoming("#T-1 ок, дам 5% скидку")
     );
 
-    expect(handled).toBe(true);
     // Клиенту ушёл компонованный ответ.
     const toClient = tg.sent.find(s => s.chatId === String(CLIENT_CHAT_ID));
     expect(toClient).toBeDefined();
@@ -164,11 +163,10 @@ describe("handleBossMessage: matched + утечка → блокировка с 
     await seedTickets(freshFile(ticket));
 
     const { rt, tg } = await buildRuntime();
-    const handled = await (rt as any).handleBossMessage(
+    await (rt as any).handleBossMessage(
       makeIncoming(`#T-1 ${summary}`)
     );
 
-    expect(handled).toBe(true);
     // Клиенту НЕ должно ничего уходить.
     const toClient = tg.sent.find(s => s.chatId === String(CLIENT_CHAT_ID));
     expect(toClient).toBeUndefined();
@@ -201,10 +199,9 @@ describe("handleBossMessage: ветви ошибок парсера → guidance
     await seedTickets(freshFile(t1, t2));
 
     const { rt, tg } = await buildRuntime();
-    const handled = await (rt as any).handleBossMessage(
+    await (rt as any).handleBossMessage(
       makeIncoming("@alice короткий ответ")
     );
-    expect(handled).toBe(true);
     const toBoss = tg.sent.find(s => s.chatId === OWNER_ID);
     expect(toBoss).toBeDefined();
     expect(toBoss!.text).toMatch(/@alice/);
@@ -232,10 +229,9 @@ describe("handleBossMessage: ветви ошибок парсера → guidance
     await seedTickets(freshFile(ticket));
 
     const { rt, tg } = await buildRuntime();
-    const handled = await (rt as any).handleBossMessage(
+    await (rt as any).handleBossMessage(
       makeIncoming("#T-99 нет такого тикета")
     );
-    expect(handled).toBe(true);
     const toBoss = tg.sent.find(s => s.chatId === OWNER_ID);
     expect(toBoss).toBeDefined();
     expect(toBoss!.text).toMatch(/#T-99/);
@@ -252,8 +248,7 @@ describe("handleBossMessage: ветви ошибок парсера → guidance
     await seedTickets(freshFile(ticket));
 
     const { rt, tg } = await buildRuntime();
-    const handled = await (rt as any).handleBossMessage(makeIncoming("#T-1   "));
-    expect(handled).toBe(true);
+    await (rt as any).handleBossMessage(makeIncoming("#T-1   "));
     const toBoss = tg.sent.find(s => s.chatId === OWNER_ID);
     expect(toBoss).toBeDefined();
     expect(toBoss!.text).toMatch(/пусто|сформулируй/i);
@@ -272,16 +267,18 @@ describe("handleBossMessage: ветви ошибок парсера → guidance
     await seedTickets(freshFile(ticket));
 
     const { rt, tg } = await buildRuntime();
-    const handled = await (rt as any).handleBossMessage(
+    await (rt as any).handleBossMessage(
       makeIncoming("@nobody привет")
     );
-    expect(handled).toBe(true);
     const toBoss = tg.sent.find(s => s.chatId === OWNER_ID);
     expect(toBoss).toBeDefined();
     expect(toBoss!.text).toMatch(/reply|#T-N|@username/);
   });
 
-  it("no-identification + обычный текст без признаков → возвращает false (legacy-flow)", async () => {
+  it("no-identification + обычный текст без признаков → guidance (всегда отвечаем боссу)", async () => {
+    // Per design § 5.2: ВСЕ сообщения от босса с активным тикетом получают
+    // guidance, даже если они выглядят как «привет» — manager-mode не
+    // поддерживает «обычный чат босса с агентом».
     const ticket = createTicket({
       contact: { chatId: "c1", username: "alice" },
       message: "входящее",
@@ -291,22 +288,21 @@ describe("handleBossMessage: ветви ошибок парсера → guidance
     await seedTickets(freshFile(ticket));
 
     const { rt, tg } = await buildRuntime();
-    const handled = await (rt as any).handleBossMessage(
-      makeIncoming("привет, как дела?")
-    );
-    expect(handled).toBe(false);
-    expect(tg.sent.length).toBe(0);
+    await (rt as any).handleBossMessage(makeIncoming("привет, как дела?"));
+    const toBoss = tg.sent.find(s => s.chatId === OWNER_ID);
+    expect(toBoss).toBeDefined();
+    expect(toBoss!.text).toMatch(/reply|#T-N|@username/);
   });
 });
 
-describe("handleBossMessage: пустой список тикетов → fallback на legacy", () => {
-  it("без открытых тикетов handleBossMessage возвращает false", async () => {
+describe("handleBossMessage: пустой список тикетов → инфо боссу", () => {
+  it("без открытых тикетов handleBossMessage отдаёт короткое инфо боссу", async () => {
     await seedTickets(freshFile());
     const { rt, tg } = await buildRuntime();
-    const handled = await (rt as any).handleBossMessage(
-      makeIncoming("#T-1 ответ")
-    );
-    expect(handled).toBe(false);
-    expect(tg.sent.length).toBe(0);
+    await (rt as any).handleBossMessage(makeIncoming("#T-1 ответ"));
+    // Боссу ушло информационное сообщение «нет тикетов».
+    const toBoss = tg.sent.find(s => s.chatId === OWNER_ID);
+    expect(toBoss).toBeDefined();
+    expect(toBoss!.text).toMatch(/тикет/i);
   });
 });
