@@ -48,34 +48,6 @@ export interface MCPPreset {
   spawn?: (secrets: Record<string, string>) => { command: string; args: string[]; env?: Record<string, string> };
 }
 
-export type StageId =
-  | "met-irl-got-tg"
-  | "tg-given-cold"
-  | "tg-given-warming"
-  | "convinced"
-  | "first-date-done"
-  | "dating-early"
-  | "dating-stable"
-  | "long-term"
-  | "dumped";
-
-export interface StagePreset {
-  id: StageId;
-  num: number;
-  label: string;
-  description: string;
-  /** behavioural defaults baked into prompt */
-  defaults: {
-    interest: number;     // -100..100
-    trust: number;
-    attraction: number;
-    annoyance: number;
-    cringeTolerance: number; // higher = more tolerant
-    ignoreChance: number;    // 0..1 base probability per incoming message
-    replyDelaySec: [number, number]; // min,max
-  };
-}
-
 export type Weekday = "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";
 
 export interface BusySlot {
