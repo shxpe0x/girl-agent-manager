@@ -7,12 +7,16 @@ import { applyMoodDelta, maybeReflect } from "./reflect.js";
 import {
   appendSessionLog, appendSharedMemory, readRelationship, writeRelationship, writeConfig, writeMd,
   readAgenda, writeAgenda, readRecentSessionTurns, readMd, sessionDate, normalizeOwnerId, profileDir,
-  subscribeConfig, type ConfigSubscription, type AgendaItem
+  subscribeConfig, type ConfigSubscription, type AgendaItem,
+  loadTickets, saveTickets
 } from "../storage/md.js";
 import { evaluateGate, type GateContact } from "./gate.js";
 import { upsertOnIncoming as upsertContactOnIncoming, isBlocked as isContactBlocked } from "./contacts.js";
 import { evaluateAfterHours, snapshotAfterHours } from "./after-hours.js";
 import { saveContact, loadContact } from "../storage/md.js";
+import { parseBossReply, type OpenTicketSummary } from "./boss-reply-parser.js";
+import { composeClientReplyFromBoss, transitionTicket } from "./escalation.js";
+import { loadMandate as loadMandateFile } from "../storage/md.js";
 import { findStage } from "./legacy-stage.js";
 import type { LegacyStageId as StageId } from "./legacy-stage.js";
 import { communicationProfileLabel, normalizeCommunicationProfile } from "../presets/communication.js";
@@ -772,6 +776,23 @@ export class Runtime extends EventEmitter {
         await this.handleEmojiReaction(m).catch(e => this.emit("event", { type: "error", text: `handleEmojiReaction: ${silentErrorLabel(e)}` } as RuntimeEvent));
         return;
       }
+      // Manager-mode: попытка обработать сообщение от босса как boss-reply
+      // (Task 4.12a). Если есть открытые тикеты и сообщение разпознано
+      // парсером — handleBossMessage возвращает true и legacy-flow не
+      // запускается. Иначе (нет открытых тикетов / парсер вернул
+      // not-boss/no-identification без признаков boss-reply) — продолжаем
+      // legacy-handling, чтобы не ломать существующее поведение.
+      if (this.cfg.ownerId && m.fromId === this.cfg.ownerId) {
+        try {
+          const handled = await this.handleBossMessage(m);
+          if (handled) return;
+        } catch (e) {
+          this.emit("event", {
+            type: "error",
+            text: `handleBossMessage: ${silentErrorLabel(e)}`
+          } as RuntimeEvent);
+        }
+      }
       await this.switchPrimaryAfterDumped(m.fromId);
       await this.ensureOwner(m.fromId);
       const isPrimary = this.isPrimaryFrom(m.fromId);
@@ -1082,6 +1103,185 @@ export class Runtime extends EventEmitter {
       this.emit("event", { type: "error", text: `handleIncoming: ${silentErrorLabel(e)}` } as RuntimeEvent);
     }
   }
+
+  /**
+   * Обработчик сообщений от босса в контексте `Escalation_Loop`
+   * (Task 4.12a manager-mode, Requirement 4 + 6).
+   *
+   * Прогоняет входящее через `parseBossReply`, переводит тикет
+   * `waiting-boss → answered` при удачном матче, либо отправляет боссу
+   * подсказку при неоднозначной/отсутствующей идентификации.
+   *
+   * Возвращает `true`, если сообщение было обработано как boss-reply
+   * (caller должен прервать дальнейшую обработку); `false` означает «это
+   * обычное сообщение босса» и caller продолжает legacy-flow.
+   */
+  private async handleBossMessage(m: IncomingMessage): Promise<boolean> {
+    if (!this.cfg.ownerId || m.fromId !== this.cfg.ownerId) return false;
+
+    let file;
+    try {
+      file = await loadTickets(this.cfg.slug);
+    } catch (e) {
+      this.emit("event", {
+        type: "error",
+        text: `handleBossMessage: loadTickets: ${(e as Error).message}`
+      } as RuntimeEvent);
+      return false;
+    }
+
+    const openTickets: OpenTicketSummary[] = file.tickets
+      .filter(t => t.state === "waiting-boss" || t.state === "open")
+      .map(t => ({ id: t.id, clientUsername: t.clientUsername, state: t.state }));
+
+    if (openTickets.length === 0) {
+      // Нет активных тикетов — босс пишет в обычном режиме (legacy flow).
+      return false;
+    }
+
+    const bossMessageMap = new Map<number, string>();
+    for (const t of file.tickets) {
+      if (typeof t.bossMessageId === "number") bossMessageMap.set(t.bossMessageId, t.id);
+    }
+
+    const result = parseBossReply(
+      { fromId: m.fromId, text: m.text },
+      openTickets,
+      { ownerId: this.cfg.ownerId, bossMessageMap }
+    );
+
+    switch (result.kind) {
+      case "not-boss":
+        return false;
+      case "matched": {
+        const ticket = file.tickets.find(t => t.id === result.ticketId);
+        if (!ticket) {
+          await this.replyToBoss(m, `Тикет ${result.ticketId} не найден или уже закрыт.`);
+          return true;
+        }
+        const mandateText = await loadMandateFile(this.cfg.slug).catch(() => "");
+        const composed = await composeClientReplyFromBoss({
+          ticket,
+          bossReplyText: result.clientReplyText,
+          mandate: mandateText
+        });
+        if (composed.kind === "blocked") {
+          await this.replyToBoss(
+            m,
+            `Не могу отправить ответ клиенту — confidentiality-guard сработал (${composed.violationKind}). Перефразируй, не цитируя внутренний контекст.`
+          );
+          this.emit("event", {
+            type: "info",
+            text: `boss-reply blocked by guard: ${composed.reason}`,
+            chatId: m.chatId
+          } as RuntimeEvent);
+          return true;
+        }
+        try {
+          await this.tg.sendText(ticket.chatId, composed.text);
+          this.emit("event", {
+            type: "outgoing",
+            text: composed.text,
+            chatId: ticket.chatId
+          } as RuntimeEvent);
+        } catch (e) {
+          await this.replyToBoss(m, `Не удалось отправить клиенту: ${(e as Error).message}.`);
+          return true;
+        }
+        const now = new Date().toISOString();
+        const nextTicket = transitionTicket(ticket, "answered", "boss-reply", "boss", now);
+        nextTicket.bossReplyAt = now;
+        nextTicket.bossReplyRaw = m.text;
+        nextTicket.clientReply = composed.text;
+        nextTicket.clientReplyAt = now;
+        const idx = file.tickets.findIndex(t => t.id === ticket.id);
+        if (idx >= 0) file.tickets[idx] = nextTicket;
+        try {
+          await saveTickets(this.cfg.slug, file);
+        } catch (e) {
+          this.emit("event", {
+            type: "error",
+            text: `handleBossMessage: saveTickets: ${(e as Error).message}`
+          } as RuntimeEvent);
+        }
+        await this.replyToBoss(m, `Отправил клиенту (${ticket.id}).`);
+        return true;
+      }
+      case "conflict": {
+        const ids = result.candidateIds.join(", ");
+        await this.replyToBoss(
+          m,
+          `Конфликт идентификации: ${ids}. Уточни какой тикет имеется в виду.`
+        );
+        return true;
+      }
+      case "ambiguous-username": {
+        const ids = result.candidateIds.join(", ");
+        await this.replyToBoss(
+          m,
+          `У @${result.username} несколько открытых тикетов: ${ids}. Используй #T-N или reply.`
+        );
+        return true;
+      }
+      case "no-username-meta": {
+        await this.replyToBoss(
+          m,
+          `У ${result.ticketId} нет username клиента — отвечай через reply или #T-N.`
+        );
+        return true;
+      }
+      case "ticket-not-found": {
+        await this.replyToBoss(
+          m,
+          `Тикет ${result.ticketId} не найден или уже закрыт.`
+        );
+        return true;
+      }
+      case "empty-reply": {
+        await this.replyToBoss(
+          m,
+          `В ответе пусто после префикса. Сформулируй текст для клиента.`
+        );
+        return true;
+      }
+      case "no-identification": {
+        // Нет идентификатора: если входящее похоже на попытку boss-reply
+        // (содержит `#T-N` или начинается с `@username`) — подсказываем
+        // формат; иначе отдаём legacy-flow.
+        const looksLikeBossReply =
+          /^@[A-Za-z0-9_]{3,32}\b/.test(m.text ?? "") || /#T-\d+/.test(m.text ?? "");
+        if (!looksLikeBossReply) return false;
+        await this.replyToBoss(
+          m,
+          `Не понял к какому тикету это. Используй reply, #T-N или @username.`
+        );
+        return true;
+      }
+      default: {
+        const _exhaustive: never = result;
+        return false;
+      }
+    }
+  }
+
+  /**
+   * Тонкая обёртка над `tg.sendText` для ответов боссу. Эмитит outgoing-event
+   * и проглатывает ошибки сети — если босс недоступен, runtime не должен
+   * падать на этом.
+   */
+  private async replyToBoss(m: IncomingMessage, text: string): Promise<void> {
+    try {
+      await this.tg.sendText(m.chatId, text);
+      this.emit("event", { type: "outgoing", text, chatId: m.chatId } as RuntimeEvent);
+    } catch (e) {
+      this.emit("event", {
+        type: "error",
+        text: `replyToBoss: ${(e as Error).message}`,
+        chatId: m.chatId
+      } as RuntimeEvent);
+    }
+  }
+
 
   private async generateAndSend(
     chatId: number | string,
