@@ -169,19 +169,28 @@ export function ConfigurationPage() {
   const [draft, setDraft] = useState<DraftState>(() => makeDraft(cfg));
   const [llmPresets, setLLMPresets] = useState<LLMPreset[]>([]);
   const [touched, setTouched] = useState<Set<FieldKey>>(new Set());
+  const [serverErrors, setServerErrors] = useState<FieldErrors>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [initialMandate, setInitialMandate] = useState<string>("");
+  const [initialWhitelistJson, setInitialWhitelistJson] = useState<string>(JSON.stringify(cfg?.whitelist ?? []));
 
   // Re-seed draft при смене активного профиля.
   useEffect(() => {
     setDraft(makeDraft(cfg));
     setTouched(new Set());
+    setServerErrors({});
+    setInitialWhitelistJson(JSON.stringify(cfg?.whitelist ?? []));
   }, [cfg?.slug]);
 
   // Подгружаем mandate.md отдельно (он не в config.json).
   useEffect(() => {
     if (!cfg?.slug) return;
     void api.getMandate(cfg.slug)
-      .then(r => setDraft(prev => ({ ...prev, mandate: r.text })))
-      .catch(() => { /* нет — оставляем пусто */ });
+      .then(r => {
+        setDraft(prev => ({ ...prev, mandate: r.text }));
+        setInitialMandate(r.text);
+      })
+      .catch(() => { setInitialMandate(""); });
   }, [cfg?.slug]);
 
   useEffect(() => {
@@ -191,11 +200,22 @@ export function ConfigurationPage() {
   const errors = useMemo(() => validate(draft), [draft]);
   const hasErrors = Object.keys(errors).length > 0;
 
+  const refreshActive = useStore(s => s.refreshActive);
+
   function set<K extends FieldKey>(k: K, v: DraftState[K]) {
     setDraft(prev => ({ ...prev, [k]: v }));
     setTouched(prev => new Set(prev).add(k));
+    // Очищаем серверную ошибку по этому полю при правке.
+    if (serverErrors[k]) {
+      setServerErrors(prev => {
+        const next = { ...prev };
+        delete next[k];
+        return next;
+      });
+    }
   }
   function err(k: FieldKey): string | undefined {
+    if (serverErrors[k]) return serverErrors[k];
     return touched.has(k) ? errors[k] : undefined;
   }
 
@@ -225,14 +245,90 @@ export function ConfigurationPage() {
     set("busySchedule", draft.busySchedule.filter((_, i) => i !== idx));
   }
 
-  function applyDraft() {
+  async function applyDraft() {
+    if (!cfg) return;
     setTouched(new Set(Object.keys(draft) as FieldKey[]));
     if (hasErrors) {
       toast("Не все поля валидны — проверь подсветку", "error");
       return;
     }
-    // TODO Task 6b: реальный save flow (mandate + whitelist + profile + apply).
-    toast("Сохранение появится в задаче 6b", "info");
+    setSubmitting(true);
+    setServerErrors({});
+
+    try {
+      // 1. Mandate (отдельный endpoint /api/mandate/:slug — пишет в mandate.md).
+      if (draft.mandate !== initialMandate) {
+        await api.updateMandate(cfg.slug, draft.mandate);
+        setInitialMandate(draft.mandate);
+      }
+
+      // 2. Whitelist (отдельный endpoint /api/whitelist/:slug — пишет в config.json).
+      const whitelistJson = JSON.stringify(draft.whitelist);
+      if (whitelistJson !== initialWhitelistJson) {
+        await api.updateWhitelist(cfg.slug, draft.whitelist);
+        setInitialWhitelistJson(whitelistJson);
+      }
+
+      // 3. Профиль (всё остальное).
+      const payload: Partial<ProfileConfig> = {
+        age: draft.age,
+        tz: draft.tz,
+        personaNotes: draft.personaNotes,
+        tone: draft.tone,
+        personaStyle: draft.personaStyle,
+        gateLevel: draft.gateLevel,
+        afterHoursPolicy: draft.afterHoursPolicy,
+        proactiveClients: draft.proactiveClients,
+        proactiveBoss: draft.proactiveBoss,
+        escalationTimeoutMin: draft.escalationTimeoutMin,
+        digestPeriodHours: draft.digestPeriodHours,
+        digestTime: draft.digestTime,
+        sleepFrom: draft.sleepFrom,
+        sleepTo: draft.sleepTo,
+        busySchedule: draft.busySchedule.map(b => ({
+          dayOfWeek: b.dayOfWeek,
+          startHour: b.startHour,
+          endHour: b.endHour,
+          ...(b.reason ? { reason: b.reason } : {})
+        })),
+        telegram: {
+          ...cfg.telegram,
+          ...(cfg.mode === "bot" ? { botToken: draft.botToken } : {})
+        },
+        llm: {
+          ...cfg.llm,
+          presetId: draft.llmPresetId,
+          model: draft.llmModel,
+          apiKey: draft.llmApiKey,
+          ...(draft.llmBaseURL ? { baseURL: draft.llmBaseURL } : {})
+        }
+      };
+      await api.updateProfile(cfg.slug, payload);
+
+      // 4. Restart runtime, чтобы изменения LLM/Telegram точно подхватились.
+      await api.applyProfile(cfg.slug);
+
+      toast("Конфиг сохранён, runtime перезапущен", "success");
+      await refreshActive();
+    } catch (e) {
+      const msg = (e as Error)?.message ?? "ошибка сохранения";
+      // Сервер может вернуть 400 с {error, details: { errors: { field: msg }}}.
+      const payloadErrors = (e as { payload?: { errors?: Record<string, string>; details?: { errors?: Record<string, string> } } })?.payload;
+      const fieldErrors = payloadErrors?.errors ?? payloadErrors?.details?.errors;
+      if (fieldErrors && typeof fieldErrors === "object") {
+        const mapped: FieldErrors = {};
+        for (const [k, v] of Object.entries(fieldErrors)) {
+          if (typeof v === "string") (mapped as Record<string, string>)[k] = v;
+        }
+        setServerErrors(mapped);
+        toast("Не все поля валидны — проверь подсветку", "error");
+      } else {
+        setServerErrors({ submit: msg });
+        toast(`Не удалось сохранить: ${msg}`, "error");
+      }
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   if (!cfg) {
@@ -280,17 +376,20 @@ export function ConfigurationPage() {
       />
 
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-        <button className="btn ghost" onClick={() => setDraft(makeDraft(cfg))}>
+        <button className="btn ghost" onClick={() => setDraft(makeDraft(cfg))} disabled={submitting}>
           Отменить изменения
         </button>
         <button
           className="btn primary"
-          onClick={applyDraft}
-          disabled={hasErrors}
+          onClick={() => void applyDraft()}
+          disabled={hasErrors || submitting}
         >
-          Применить и перезапустить runtime
+          {submitting ? "Применяю…" : "Применить и перезапустить runtime"}
         </button>
       </div>
+      {serverErrors.submit && (
+        <div className="hint" style={{ color: "var(--accent)", textAlign: "right" }}>{serverErrors.submit}</div>
+      )}
     </div>
   );
 }
