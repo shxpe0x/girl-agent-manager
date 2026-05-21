@@ -1,6 +1,6 @@
 {
-  "name": "@shxpe0x/manager-agent",
-  "version": "0.5.1",
+  "name": "@shxpe/manager-agent",
+  "version": "0.5.2",
   "description": "AI-менеджер в Telegram: персональный секретарь с эскалацией боссу. Форк @thesashadev/girl-agent.",
   "type": "module",
   "bin": {

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.2
+
+Дата: 2026-05-21
+
+### Changed
+
+- **Smene scope**: пакет переименован с `@shxpe0x/manager-agent` на `@shxpe/manager-agent`. Scope `@shxpe0x` на npm registry не существовал — npm-логин мейнтейнера `shxpe`, поэтому корректный scope именно `@shxpe`. Установка: `npx @shxpe/manager-agent`. `0.5.1` остался только в git-теге, на npm не попал.
+
 ## 0.5.1
 
 Дата: 2026-05-21
