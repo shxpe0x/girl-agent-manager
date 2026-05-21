@@ -2,14 +2,14 @@
 
 export interface ProfileSummary {
   slug: string; name: string; age: number; nationality: string;
-  stage: string; mode: string;
+  mode: string;
   status: "running" | "paused" | "stopped" | "error";
   startedAt?: number; lastError?: string;
 }
 
 export interface ProfileConfig {
   slug: string; name: string; age: number; nationality: "RU" | "UA"; tz: string;
-  mode: "bot" | "userbot"; stage: string;
+  mode: "bot" | "userbot";
   llm: { presetId: string; proto: "openai" | "anthropic"; baseURL?: string; apiKey: string; model: string; oauthRefreshToken?: string; oauthExpiresAt?: number };
   telegram: { botToken?: string; apiId?: number; apiHash?: string; sessionString?: string; phone?: string; useWSS?: boolean; proxy?: string };
   mcp?: { id: string; secrets: Record<string, string> }[];
@@ -17,9 +17,6 @@ export interface ProfileConfig {
   privacy?: "owner-only" | "allow-strangers";
   createdAt: string;
   sleepFrom: number; sleepTo: number; nightWakeChance: number;
-  ignoreTendency?: number;
-  vibe?: "short" | "warm";
-  communication?: { notifications: string; messageStyle: string; initiative: string; lifeSharing: string };
   personaNotes?: string;
   busySchedule?: { dayOfWeek: number; startHour: number; endHour: number; reason?: string }[];
   // ===== Manager-mode (см. .kiro/specs/manager-mode/design.md § 3.1) =====
@@ -46,16 +43,6 @@ export interface LLMPreset {
   apiKeyRequired: boolean; recommended: boolean; oauth: boolean;
   hint?: string; custom: boolean;
   disabled?: boolean; disabledReason?: string;
-}
-
-export interface StagePreset {
-  id: string; num: number; label: string; description: string;
-  defaults: Record<string, unknown>;
-}
-
-export interface CommunicationPreset {
-  id: string; label: string; description: string;
-  profile: { notifications: string; messageStyle: string; initiative: string; lifeSharing: string };
 }
 
 export interface AddonSetting {
@@ -174,9 +161,6 @@ export const api = {
   async generatePersona(slug: string, data: { name?: string; age?: number; nationality?: "RU" | "UA"; notes?: string } = {}) {
     return req<{ ok: true; busySchedule: unknown[] }>("POST", `/api/profiles/${encodeURIComponent(slug)}/generate-persona`, data);
   },
-  async getRelationship(slug: string) {
-    return req<{ stage: { id: string; num: number; label: string }; score: { interest: number; trust: number; attraction: number; annoyance: number; cringe: number } }>("GET", `/api/profiles/${encodeURIComponent(slug)}/relationship`);
-  },
   async listMemoryFiles(slug: string) {
     return req<{ files: { path: string; size: number; mtime: number }[] }>("GET", `/api/profiles/${encodeURIComponent(slug)}/memory`);
   },
@@ -198,8 +182,6 @@ export const api = {
   },
 
   async listLLMPresets() { return req<{ presets: LLMPreset[] }>("GET", "/api/presets/llm"); },
-  async listStages() { return req<{ stages: StagePreset[] }>("GET", "/api/presets/stages"); },
-  async listCommunicationPresets() { return req<{ presets: CommunicationPreset[] }>("GET", "/api/presets/communication"); },
   async listTimezones(q = "") { return req<{ zones: { iana: string; gmtWinter: string; city: string; country: string; aliases: string[]; group?: "UA" | "CIS" | "RU" }[] }>("GET", `/api/presets/timezones?q=${encodeURIComponent(q)}`); },
   async pickNames(nationality: "RU" | "UA", count = 12) { return req<{ names: string[] }>("GET", `/api/presets/names?nationality=${nationality}&count=${count}`); },
 
@@ -391,7 +373,7 @@ export function logsSocket(slug: string, onEvent: (e: { type: string; text?: str
   return () => { try { ws.close(); } catch { /* ignore */ } };
 }
 
-export function statusSocket(slug: string, onSnapshot: (s: { status: { state: string; lastError?: string }; score?: Record<string, number> | null; stage?: string; t: number }) => void): () => void {
+export function statusSocket(slug: string, onSnapshot: (s: { status: { state: string; lastError?: string }; t: number }) => void): () => void {
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
   const ws = new WebSocket(`${proto}//${location.host}/ws/status/${encodeURIComponent(slug)}`);
   ws.addEventListener("message", (m) => {

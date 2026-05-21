@@ -4,24 +4,13 @@ import { api, logsSocket, statusSocket } from "../lib/api";
 
 interface LogEvent { type: string; text?: string; t: number }
 
-const SCORE_KEYS: { key: string; label: string; negative?: boolean }[] = [
-  { key: "interest", label: "Интерес" },
-  { key: "trust", label: "Доверие" },
-  { key: "attraction", label: "Влечение" },
-  { key: "annoyance", label: "Раздражение", negative: true },
-  { key: "cringe", label: "Кринж", negative: true }
-];
-
 export function LogsPage() {
   const activeSlug = useStore(s => s.activeSlug);
   const profiles = useStore(s => s.profiles);
-  const toast = useStore(s => s.toast);
   const runCommand = useStore(s => s.runCommand);
   const showSetupFlow = useStore(s => s.showSetupFlow);
 
   const [events, setEvents] = useState<LogEvent[]>([]);
-  const [score, setScore] = useState<Record<string, number> | null>(null);
-  const [stage, setStage] = useState<string | undefined>();
   const [statusState, setStatusState] = useState<string>("stopped");
   const [autoscroll, setAutoscroll] = useState(true);
   const [filter, setFilter] = useState<"all" | "in" | "out" | "info" | "warn" | "error">("all");
@@ -40,8 +29,6 @@ export function LogsPage() {
     api.getLogsBuffer(activeSlug).then(r => setEvents(r.events as LogEvent[])).catch(() => { /* silent */ });
     const offLogs = logsSocket(activeSlug, (e) => setEvents(prev => prev.concat(e).slice(-1000)));
     const offStatus = statusSocket(activeSlug, (s) => {
-      setScore(s.score ?? null);
-      setStage(s.stage);
       setStatusState(s.status?.state ?? "stopped");
     });
     return () => { offLogs(); offStatus(); };
@@ -96,28 +83,14 @@ export function LogsPage() {
             <div className="h-meta">
               <span className={`chip ${statusState === "running" ? "success" : statusState === "error" ? "error" : ""}`}>{statusLabel(statusState)}</span>
               {active?.lastError && <span className="chip error" style={{ marginLeft: 8 }}>{active.lastError}</span>}
-              {stage && <span className="chip accent" style={{ marginLeft: 8 }}>стадия: {stage}</span>}
             </div>
           </div>
           <div className="h-actions">
             <button className="btn tiny" onClick={() => void runCommand(activeSlug, "status")}>:status</button>
             <button className="btn tiny" onClick={() => void runCommand(activeSlug, "why")}>:why</button>
-            <button className="btn tiny" onClick={() => void runCommand(activeSlug, "wake")}>:wake</button>
             <button className="btn tiny" onClick={() => void runCommand(activeSlug, "debug")}>:debug</button>
-            <button className="btn tiny danger" onClick={() => { if (confirm("Сбросить relationship?")) void runCommand(activeSlug, "reset"); }}>:reset</button>
           </div>
         </div>
-        {score && (
-          <div className="score-grid">
-            {SCORE_KEYS.map(k => (
-              <div key={k.key} className={`score-cell ${k.negative ? "negative" : ""}`}>
-                <div className="lbl">{k.label}</div>
-                <div className="val">{Math.round(score[k.key] ?? 0)}</div>
-                <div className="bar"><div className="fill" style={{ width: `${Math.min(100, Math.max(0, score[k.key] ?? 0))}%` }} /></div>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
       <div style={{ display: "flex", gap: 8 }}>

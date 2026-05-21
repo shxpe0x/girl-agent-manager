@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { api, type ProfileSummary, type ProfileConfig } from "./api";
 
-export type Tab = "assistant" | "logs" | "relationship" | "configuration" | "memory" | "addons" | "diagnostics";
+export type Tab = "assistant" | "logs" | "configuration" | "memory" | "addons" | "diagnostics";
 
 interface Toast {
   id: number;
@@ -76,8 +76,12 @@ export const useStore = create<State>((set, get) => ({
         await get().selectProfile(candidate.slug);
         set({ tab: "logs" });
       } else {
-        // No profiles → show setup
-        set({ showSetup: true, tab: "logs" });
+        // Нет профилей → редиректим на новый manager-визард.
+        set({ tab: "logs" });
+        if (typeof window !== "undefined") {
+          window.history.pushState({}, "", "/setup/manager");
+          window.dispatchEvent(new PopStateEvent("popstate"));
+        }
       }
     } catch (e) {
       get().toast(`Не удалось загрузить профили: ${(e as Error)?.message}`, "error");
@@ -138,7 +142,16 @@ export const useStore = create<State>((set, get) => ({
 
   setTab(t) { set({ tab: t, sidebarOpen: false }); },
   setSidebar(open) { set({ sidebarOpen: open }); },
-  showSetupFlow(show) { set({ showSetup: show }); },
+  showSetupFlow(show) {
+    // Оставлено как backward-compatible API: все вызовы из старых страниц
+    // (LogsPage, ConfigurationPage, Sidebar) теперь редиректят на новый
+    // визард `/setup/manager` через path-router (см. App.tsx).
+    set({ showSetup: show });
+    if (show && typeof window !== "undefined") {
+      window.history.pushState({}, "", "/setup/manager");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    }
+  },
 
   toast(text, kind = "info") {
     const id = toastSeq++;

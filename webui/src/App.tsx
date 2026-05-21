@@ -10,9 +10,7 @@ import { ConfigurationPage } from "./pages/ConfigurationPage";
 import { MemoryPage } from "./pages/MemoryPage";
 import { AddonsPage } from "./pages/AddonsPage";
 import { AssistantPage } from "./pages/AssistantPage";
-import { RelationshipPage } from "./pages/RelationshipPage";
 import { DiagnosticsPage } from "./pages/DiagnosticsPage";
-import { SetupFlow } from "./pages/SetupFlow";
 import { SetupManagerPage, isSetupManagerPath } from "./pages/SetupManagerPage";
 import { ContactsPage, isContactsPath } from "./pages/ContactsPage";
 import { InboxPage, isInboxPath } from "./pages/InboxPage";
@@ -21,7 +19,6 @@ import { AuthGate } from "./components/AuthGate";
 export function App() {
   const ready = useStore(s => s.ready);
   const tab = useStore(s => s.tab);
-  const showSetup = useStore(s => s.showSetup);
   const sidebarOpen = useStore(s => s.sidebarOpen);
   const init = useStore(s => s.init);
 
@@ -72,7 +69,6 @@ export function App() {
               {tab === "memory" && <MemoryPage />}
               {tab === "addons" && <AddonsPage />}
               {tab === "assistant" && <AssistantPage />}
-              {tab === "relationship" && <RelationshipPage />}
               {tab === "diagnostics" && <DiagnosticsPage />}
             </div>
           </div>
@@ -81,7 +77,6 @@ export function App() {
       <ApplyPill />
       <Toasts />
       <CommandModal />
-      {showSetup && !setupManager && !contactsPage && !inboxPage && <SetupFlow />}
     </AuthGate>
   );
 }

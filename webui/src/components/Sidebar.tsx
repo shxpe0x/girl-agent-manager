@@ -5,7 +5,6 @@ import type { Tab } from "../lib/store";
 const ITEMS: { id: Tab; label: string; icon: string }[] = [
   { id: "assistant", label: "Помощник", icon: "✦" },
   { id: "logs", label: "Логи / статус", icon: "≡" },
-  { id: "relationship", label: "Отношения", icon: "♥" },
   { id: "configuration", label: "Конфигурация", icon: "⚙" },
   { id: "memory", label: "Память", icon: "❀" },
   { id: "addons", label: "Аддоны", icon: "◉" },
