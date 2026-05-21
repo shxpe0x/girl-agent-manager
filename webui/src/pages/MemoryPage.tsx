@@ -8,8 +8,7 @@ const SUGGESTED = [
   { path: "speech.md", label: "speech.md", hint: "как пишет: лексика, длина, эмоции" },
   { path: "boundaries.md", label: "boundaries.md", hint: "что не делает / реагирует негативно" },
   { path: "communication.md", label: "communication.md", hint: "стиль и темпы общения" },
-  { path: "long-term.md", label: "long-term.md", hint: "долговременная память (заметки)" },
-  { path: "relationship.md", label: "relationship.md", hint: "стадия + score + история отношений" }
+  { path: "long-term.md", label: "long-term.md", hint: "долговременная память (заметки)" }
 ];
 
 export function MemoryPage() {
