@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.5.3
+
+Дата: 2026-05-21
+
+Полная пересборка WebUI под manager-mode. Старый girl-agent-визард и его поля (ignoreTendency, communication-пресеты, stage, romantic score) полностью вычищены из фронта; конфигурацию правит новая manager-форма.
+
+### Added
+
+- **`webui/src/pages/ConfigurationPage.tsx`** — полная manager-форма с восемью карточками: Профиль, Мандат (PUT `/api/mandate/:slug`), Тон + Persona-стиль, Доступ + after-hours + проактивность + тайминги, Whitelist (условно при `gateLevel=whitelist`, через PUT `/api/whitelist/:slug`), Telegram (bot-token для bot-режима, CLI-hint для userbot), LLM (preset/model/apiKey/baseURL), Расписание (sleep + busy slots editor). Inline-валидация всех полей; Apply делает PUT mandate + PUT whitelist + PUT profile + POST apply последовательно с идемпотентностью по снапшотам.
+- **Sidebar пункты Контакты и Инбокс** — path-роут на `/contacts/<slug>` и `/inbox/<slug>` через `pushState` + popstate. Активная подсветка следует за URL.
+- **`api.getMandate` / `api.updateMandate` / `api.getWhitelist` / `api.updateWhitelist`** — типизированные обёртки над уже-задеплоенными manager-mode endpoints.
+- **Property webui-cleanup** — формальная гарантия отсутствия legacy-маркеров. Acceptance grep по `webui/src/**` на `ignoreTendency|findStage|relationship\\.md|listStages|listCommunicationPresets|StagePreset|CommunicationPreset|Тенденция игнора|Стадия отношений` возвращает пусто.
+
+### Changed
+
+- **Sidebar brand** `girl-agent` → `manager-agent`. Plus-кнопка в profile-popover напрямую редиректит на `/setup/manager`.
+- **`store.showSetupFlow`** — теперь backward-compat shim: любой вызов делает `pushState("/setup/manager")` + `popstate` вместо монтажа старой модалки.
+- **`store.init()`** при пустом списке профилей редиректит на manager-визард, не открывает legacy-модалку.
+
+### Removed
+
+- **`webui/src/pages/SetupFlow.tsx`** (legacy визард со stage / communication / ignoreTendency).
+- **`webui/src/pages/RelationshipPage.tsx`** (романтический score).
+- **Таб `relationship`** — из `Sidebar`, `Topbar`, `Tab`-юниона в `store.ts`.
+- **API-методы `listStages`, `listCommunicationPresets`, `getRelationship`** и типы `StagePreset`, `CommunicationPreset`.
+- **Поля `stage`, `communication`, `vibe`, `ignoreTendency`** из типа `ProfileConfig` в фронте.
+- **В `LogsPage`**: `SCORE_KEYS`, score-grid, stage-chip, кнопки `:wake` и `:reset` (романтический сброс).
+- **В `MemoryPage`**: ссылка на `relationship.md`.
+- **В `AssistantPage` greeting**: упоминание `ignoreTendency` и `стадия`.
+
+### Migration notes
+
+- Старые профили с полями `stage` / `communication` / `vibe` / `ignoreTendency` грузятся без ошибок — фронт их игнорирует. При сохранении через новую `ConfigurationPage` payload содержит только manager-поля; legacy-ключи на сервере остаются как есть (бэкенд их валидирует loose).
+- Установка: `npx @shxpe/manager-agent@0.5.3`.
+- Bundle: webui dist 261 KB → 235 KB (-26 KB, -10%).
+
 ## 0.5.2
 
 Дата: 2026-05-21
