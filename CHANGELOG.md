@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.5.1
+
+Дата: 2026-05-21
+
+### Changed
+
+- **Smene scope**: пакет переименован с `@thesashadev/manager-agent` на `@shxpe0x/manager-agent`. Оригинальный scope `@thesashadev` принадлежит автору `girl-agent`, поэтому форк публикуется в личном scope мейнтейнера. Это первая публикация на npm — `@thesashadev/manager-agent@0.5.0` никогда не существовал в registry. Атрибуция оригинального автора в LICENSE и README сохранена; добавлена в `package.json` как `contributors`.
+- `package.json:author` обновлён на `shxpe0x`, оригинальный автор `TheSashaDev` перенесён в `contributors`.
+
+### Migration notes
+
+- Установка: `npx @shxpe0x/manager-agent` (вместо `npx @thesashadev/manager-agent`).
+- Локально установленные через git/dev (`git clone` + `npm install`) — продолжают работать без изменений.
+- Property 7 (coexistence) обновлено и продолжает гарантировать, что defaults форка не совпадают с оригиналом.
+
 ## 0.5.0
 
 Дата: 2026-05-21

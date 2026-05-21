@@ -1,5 +1,5 @@
 # manager-agent — multi-arch (amd64, arm64) container.
-# Форк @thesashadev/girl-agent, переименованный в @thesashadev/manager-agent.
+# Форк @thesashadev/girl-agent, переименованный в @shxpe0x/manager-agent.
 #
 # Usage:
 #   docker run -it --rm -p 3100:3100 -v manager-agent-data:/data ghcr.io/shxpe0x/manager-agent:latest
