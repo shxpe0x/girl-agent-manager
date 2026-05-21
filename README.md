@@ -131,7 +131,7 @@ WebUI поднимется на `http://localhost:3100` (по умолчанию
 
 | | Оригинал | Форк |
 |---|---|---|
-| Имя пакета npm | `@thesashadev/girl-agent` | `@shxpe0x/manager-agent` |
+| Имя пакета npm | `@thesashadev/girl-agent` | `@shxpe/manager-agent` |
 | CLI-бинарь | `girl-agent` | `manager-agent` |
 | Порт WebUI | `3000` | `3100` |
 | Префикс env | `GIRL_AGENT_*` | `MANAGER_AGENT_*` |

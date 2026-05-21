@@ -30,7 +30,7 @@ const ORIGINAL_GIRL_AGENT = {
 // Дефолты, которые форк фиксирует на этом этапе. Должны отличаться от
 // ORIGINAL_GIRL_AGENT по каждому ключу.
 const FORK_MANAGER_AGENT = {
-  packageName: "@shxpe0x/manager-agent",
+  packageName: "@shxpe/manager-agent",
   binName: "manager-agent",
   envPrefix: "MANAGER_AGENT_",
   webuiPort: 3100,
