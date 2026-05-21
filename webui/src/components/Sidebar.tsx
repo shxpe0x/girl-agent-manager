@@ -1,15 +1,45 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useStore } from "../lib/store";
 import type { Tab } from "../lib/store";
 
-const ITEMS: { id: Tab; label: string; icon: string }[] = [
-  { id: "assistant", label: "Помощник", icon: "✦" },
-  { id: "logs", label: "Логи / статус", icon: "≡" },
-  { id: "configuration", label: "Конфигурация", icon: "⚙" },
-  { id: "memory", label: "Память", icon: "❀" },
-  { id: "addons", label: "Аддоны", icon: "◉" },
-  { id: "diagnostics", label: "Диагностика", icon: "✓" }
+/**
+ * Пункт сайдбара. Tab-пункты переключают `tab` в zustand. Path-пункты
+ * (Контакты, Инбокс) — делают `pushState` на конкретный URL и диспатчат
+ * popstate, чтобы App.tsx переключился на нужную страницу.
+ */
+type NavItem =
+  | { kind: "tab"; id: Tab; label: string; icon: string }
+  | { kind: "path"; id: string; label: string; icon: string; path: (slug: string | null) => string };
+
+const ITEMS: NavItem[] = [
+  { kind: "tab", id: "assistant", label: "Помощник", icon: "✦" },
+  { kind: "tab", id: "logs", label: "Логи / статус", icon: "≡" },
+  {
+    kind: "path",
+    id: "contacts",
+    label: "Контакты",
+    icon: "👥",
+    path: slug => slug ? `/contacts/${encodeURIComponent(slug)}` : "/contacts"
+  },
+  {
+    kind: "path",
+    id: "inbox",
+    label: "Инбокс",
+    icon: "📥",
+    path: slug => slug ? `/inbox/${encodeURIComponent(slug)}` : "/inbox"
+  },
+  { kind: "tab", id: "configuration", label: "Конфигурация", icon: "⚙" },
+  { kind: "tab", id: "memory", label: "Память", icon: "❀" },
+  { kind: "tab", id: "addons", label: "Аддоны", icon: "◉" },
+  { kind: "tab", id: "diagnostics", label: "Диагностика", icon: "✓" }
 ];
+
+function pushPath(path: string) {
+  if (typeof window !== "undefined") {
+    window.history.pushState({}, "", path);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }
+}
 
 export function Sidebar() {
   const profiles = useStore(s => s.profiles);
@@ -18,10 +48,19 @@ export function Sidebar() {
   const tab = useStore(s => s.tab);
   const setTab = useStore(s => s.setTab);
   const selectProfile = useStore(s => s.selectProfile);
-  const showSetupFlow = useStore(s => s.showSetupFlow);
   const toggleTheme = useStore(s => s.toggleTheme);
   const theme = useStore(s => s.theme);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [currentPath, setCurrentPath] = useState<string>(
+    typeof window !== "undefined" ? window.location.pathname : "/"
+  );
+  useEffect(() => {
+    function onPop() {
+      setCurrentPath(window.location.pathname);
+    }
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
 
   const active = profiles.find(p => p.slug === activeSlug) ?? null;
 
@@ -31,11 +70,28 @@ export function Sidebar() {
     : active?.status === "error" ? "error"
     : "";
 
+  // Определяем активность path-пункта по текущему URL.
+  function isPathActive(itemId: string): boolean {
+    if (itemId === "contacts") return /^\/contacts(\/|$)/.test(currentPath);
+    if (itemId === "inbox") return /^\/inbox(\/|$)/.test(currentPath);
+    return false;
+  }
+
+  function handleClick(it: NavItem) {
+    if (it.kind === "tab") {
+      // При переходе на таб гарантируем, что мы на корне `/`.
+      if (currentPath !== "/") pushPath("/");
+      setTab(it.id);
+    } else {
+      pushPath(it.path(activeSlug));
+    }
+  }
+
   return (
     <>
       <div className="sidebar-brand">
         <div className="logo" />
-        <div className="name">girl-agent</div>
+        <div className="name">manager-agent</div>
         <div className="ver">webui</div>
       </div>
 
@@ -71,12 +127,12 @@ export function Sidebar() {
             ))}
             <div
               className="profile-popover-item"
-              onClick={() => { setPickerOpen(false); showSetupFlow(true); }}
+              onClick={() => { setPickerOpen(false); pushPath("/setup/manager"); }}
             >
               <div className="pp-avatar" style={{ background: "rgba(255, 255, 255, 0.08)", color: "var(--ga-text-dim)" }}>+</div>
               <div className="pp-info">
                 <div className="pp-name">Новый профиль</div>
-                <div className="pp-meta">через Setup Flow</div>
+                <div className="pp-meta">manager-визард</div>
               </div>
             </div>
           </div>
@@ -84,16 +140,22 @@ export function Sidebar() {
       </div>
 
       <div className="nav">
-        {ITEMS.map(it => (
-          <div
-            key={it.id}
-            className={`nav-item ${tab === it.id ? "active" : ""}`}
-            onClick={() => setTab(it.id)}
-          >
-            <span className="icon">{it.icon}</span>
-            {it.label}
-          </div>
-        ))}
+        {ITEMS.map(it => {
+          const onCorePath = currentPath === "/" || currentPath === "";
+          const active = it.kind === "tab"
+            ? onCorePath && tab === it.id
+            : isPathActive(it.id);
+          return (
+            <div
+              key={it.id}
+              className={`nav-item ${active ? "active" : ""}`}
+              onClick={() => handleClick(it)}
+            >
+              <span className="icon">{it.icon}</span>
+              {it.label}
+            </div>
+          );
+        })}
       </div>
 
       <div className="sidebar-foot">
