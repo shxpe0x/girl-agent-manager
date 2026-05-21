@@ -29,12 +29,16 @@ export interface ProfileConfig {
   afterHoursPolicy?: "silent" | "auto-reply" | "vip-only";
   proactiveClients?: boolean;
   proactiveBoss?: boolean;
-  whitelist?: ({ kind: "id"; chatId: number } | { kind: "username"; username: string })[];
+  whitelist?: WhitelistEntry[];
   escalationTimeoutMin?: number;
   digestPeriodHours?: number;
   digestTime?: string;
   profileType?: "manager";
 }
+
+export type WhitelistEntry =
+  | { kind: "id"; chatId: number }
+  | { kind: "username"; username: string };
 
 export interface LLMPreset {
   id: string; name: string; proto: "openai" | "anthropic";
@@ -296,6 +300,29 @@ export const api = {
     return req<{ ticket: TicketSummary }>(
       "POST",
       `/api/inbox/${encodeURIComponent(slug)}/${encodeURIComponent(ticketId)}/cancel`
+    );
+  },
+
+  // === Manager-mode: mandate (Task 5.2) ===
+  async getMandate(slug: string) {
+    return req<{ text: string }>("GET", `/api/mandate/${encodeURIComponent(slug)}`);
+  },
+  async updateMandate(slug: string, text: string) {
+    return req<{ ok: true }>("PUT", `/api/mandate/${encodeURIComponent(slug)}`, { text });
+  },
+
+  // === Manager-mode: whitelist (Task 5.3) ===
+  async getWhitelist(slug: string) {
+    return req<{ whitelist: WhitelistEntry[] }>(
+      "GET",
+      `/api/whitelist/${encodeURIComponent(slug)}`
+    );
+  },
+  async updateWhitelist(slug: string, whitelist: WhitelistEntry[]) {
+    return req<{ whitelist: WhitelistEntry[] }>(
+      "PUT",
+      `/api/whitelist/${encodeURIComponent(slug)}`,
+      { whitelist }
     );
   }
 };
