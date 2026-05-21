@@ -205,7 +205,7 @@ function currentVersion(): string {
       const candidate = path.join(dir, "package.json");
       try {
         const pkg = JSON.parse(readFileSync(candidate, "utf8")) as { name?: string; version?: string };
-        if (pkg.name === "@thesashadev/manager-agent" && pkg.version) return pkg.version;
+        if (pkg.name === "@shxpe0x/manager-agent" && pkg.version) return pkg.version;
       } catch { /* next */ }
       dir = path.dirname(dir);
     }
